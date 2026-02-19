@@ -1,0 +1,8 @@
+data_directory: "tests/data"
+ecostress_nodata: -9999
+s2_nodata: -9999
+pct_valid_threshold: 0.8
+cloud_cover_max: 100
+inca_nodata: -9999
+inca_datasets: []
+bounding_box: [0,0,1,1]

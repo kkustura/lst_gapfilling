@@ -1,0 +1,8 @@
+output/
+tmp/
+src/logs/
+secrets.ini
+secrets*
+*.ini
+__pycache__/
+.DS_Store

@@ -1,0 +1,50 @@
+# ==== Base directories ==============================
+data_directory: output  # output directory for all data (INCA, S2, ECOSTRESS)
+
+# ======== INCA ==============================
+bounding_box: ['45.78','49.48','8.10','17.74']   # bounding box for the data download [south, north, west, east]
+inca_datasets: ['T2M', 'GL', 'RH2M', 'UU', 'VV']  # list of INCA datasets (https://dataset.api.hub.geosphere.at/app/frontend/raster/historical/inca-v1-1h-1km)
+inca_nodata: 255     # value to which to set INCA no data 
+
+# ======== S2 ==============================
+s2_datasets : ['B02', 'B03', 'B04', 'B08', 'B11', 'B12', 'SCL']  # Sentinel-2 layers
+pct_valid_threshold: 0    # valid pixels requested in Sentinel images (%)
+cloud_cover_max: 100  # max cloud coverage allowed in Sentinel images (%)
+s2_nodata: 0   # value to which to set S2 no data   
+
+# ======== ECOSTRESS ============================== 
+ecostress_nodata: 999  # value to which to set ECOSTRESS no data
+
+
+
+
+# ======== TRAINING ============================== 
+# input data preparation
+net_input_directory: output/model     
+net_output_directory:  output//model 
+
+year: 2025                  # If None, all available years are used
+month_range: [8, 8]        # range of months to include in the training dataset (inclusive)
+hour_range: [0, 24]         # range of hours to include in the training dataset (inclusive)
+
+# datasets to include in the training
+s2_datasets : ['B02', 'B03', 'B04', 'B08', 'B11', 'B12']  # Sentinel-2 layers
+inca_datasets: ['T2M', 'GL', 'RH2M', 'UU', 'VV']  # list of INCA datasets 
+
+# resolution (m)
+resolution : 70
+
+# include SCL filtering
+filter_by_SCL : True
+
+# INCA parameters (only relevant if inca_datasets not empty)
+inca_range: 0 # hours to include in the training dataset (0=current hour, 1=[current, -1], 2=[current, -1, -2], etc.)
+inca_cumulative_datasets: ['GL', 'T2M']  # datasets for which to use historic information (6am<-->observation time). For the remaining datasets, only the current hour is used.
+inca_cumulative_window: 6  # number of hours which weill be considered for cumulative datasets
+
+# model parameters
+patch_size : 5                    # size of image patch in pixels (patxh_size x patch_size)
+max_epochs : 15                   # maximum number of epochs 
+dropout_rate : 0.1                # dropout rate
+train_valid_split_shuffle : True  # whether to shuffle the train/test split
+validation_split : 0.2            # validation split
