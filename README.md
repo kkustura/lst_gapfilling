@@ -6,6 +6,7 @@ Pipeline for gap-filling missing values in Land Surface Temperature (LST) datase
 The repository provides tools for (i) downloading thermal (ECOSTRESS), meteorological (INCA) and optical (Sentinel-2) data, (ii) preparing input features and training predictive models, and (iii) generating spatially continuous LST images from incomplete satellite observations. For a complete description of the methodology, please refer to the official publication:
 
 K. Kustura, D. Conti, M. Sammer, and M. Riffler, Harnessing Multi-Source Data and Deep Learning for High-Resolution Land Surface Temperature Gap-Filling Supporting Climate Change Adaptation Activities, Remote Sensing, 2025, 17(2), 318. https://doi.org/10.3390/rs17020318
+
 ---
 
 
