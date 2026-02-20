@@ -16,13 +16,16 @@ from pathlib import Path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from lib.utils import list_filepaths
-from lib.base import BaseSetup
-from lib.data.data_config import BaseDataConfig
+from lib.base import BaseSetup, BaseConfig
 from lib.data.image import ImageProcessor
 
 @dataclass
-class EcostressConfig(BaseDataConfig):
+class EcostressConfig(BaseConfig):
     """Dataclass for ECOSTRESS specific configuration parameters."""
+    data_directory: str
+    ecostress_pct_valid_threshold: int
+    ecostress_nodata: int
+    bounding_box: list
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     target_res: Optional[int] = None
@@ -49,8 +52,8 @@ class EcostressManager(BaseSetup):
             'page_size': self.page_size, 
             'sort_key': 'start_date', 
             'bounding_box': f'{self.west},{self.south},{self.east},{self.north}',
-            'temporal': f'{self.start_date},{self.end_date}'
-            # 'temporal': f'{self.start_date}T00:00:00Z,{self.end_date}T23:59:59Z'
+            # 'temporal': f'{self.start_date},{self.end_date}'
+            'temporal': f'{self.start_date}T00:00:00Z,{self.end_date}T23:59:59Z'
         }
         
     def prepare_directories(self):
@@ -60,19 +63,15 @@ class EcostressManager(BaseSetup):
             )
         return self
         
-    def filter_downloaded_links(self, download_links, tile):
-        """Filter links corresponding to ECOSTRESS 2-LSTE images that are already found in the download directory."""
-        # timestamps of the images already found in the download directory
-        already_available_timestamps = np.unique([
-            ImageProcessor.get_timestamp_from_filename(f, data_source='ECOSTRESS') for f in os.listdir(self.download_dir)
-        ]) 
-        for i in reversed(range(len(download_links))):
-            link = download_links[i]
-            base_name = os.path.basename(link).split('.')[0]
-            timestamp = ImageProcessor.get_timestamp_from_filename(link, data_source='ECOSTRESS')
-            if already_available_timestamps.size > 0 and timestamp in already_available_timestamps and tile in base_name:
-                self.logger.warning(f'    -- Skipping: {base_name} (already found in {self.download_dir})')
-                download_links.remove(link)   
+    def filter_by_tile(self, download_links, tile):
+        available_tiles = [Path(link).name.split('_')[5] for link in download_links]
+        available_tiles = np.unique(available_tiles)
+        if tile not in available_tiles:
+            self.logger.warning(f'No images found for tile {tile} for the period {self.start_date} to {self.end_date}. Please check if tile within the bounding box.')
+            download_links = []
+        else:
+            download_links = [link for link in download_links if f'_{tile}_' in link]
+        return download_links
 
     def query_download_links(self, short_name, tile):
         """
@@ -107,7 +106,6 @@ class EcostressManager(BaseSetup):
             else:
                 self.logger.error(f'Failed to retrieve data. Status code: {response.status_code}')
                 break  
-
         # Extract download links from each granule's metadata
         download_links = []
         for granule in all_granules:
@@ -119,60 +117,57 @@ class EcostressManager(BaseSetup):
             self.logger.warning(f'No images found for download from Earthdata for the period {self.start_date} to {self.end_date}. No download will be performed.')
             self.download_links = []
             return self
-        
-        # TBD!!! move to a separate function
-        # filter only this tile
-        available_tiles = [Path(link).name.split('_')[5] for link in download_links]
-        available_tiles = np.unique(available_tiles)
-        if tile not in available_tiles:
-            self.logger.warning(f'No images found for tile {tile} for the period {self.start_date} to {self.end_date}. Please check if tile within the bounding box.')
-            self.download_links = []
-            return self
-        else:
-            download_links = [link for link in download_links if f'_{tile}_' in link]
-        
+        # filter by tile
+        download_links=self.filter_by_tile(download_links, tile)
         # filter only LST files
         download_links = [link for link in download_links if link.endswith('_LST.tif')] # or link.endswith('_QC.tif')] 
-        num_found = len(download_links)
-        
         for f in download_links:
             self.logger.info(f'    {os.path.basename(f)}')
-
-        # filter out data that is already downloaded
-        self.filter_downloaded_links(download_links, tile)
-        if len(download_links) == 0:
-            self.logger.info(f'No new images will be downloaded: all images ({self.start_date} to {self.end_date}) already found in {self.download_dir}.')
-        else:
-            self.logger.info(f'    -- {len(download_links)}/{num_found} images are not found in {self.download_dir} -- added to download list.')
         self.download_links = download_links
         return self
 
     def download_images(self, additional_arguments=''):
-        """Downloads ECOSTRESS images."""
+        """
+        Downloads ECOSTRESS images.
+        If pct_valid_threshold > 0 is provided, images with pct valid pixels less than will be removed.
+        """
         def _download_single_image(link):
             """Helper function to download a file from a single link using wget."""
             cmd = f'wget {additional_arguments} --user {self.username} --password {self.password} {link} --directory-prefix {self.download_dir}'
             subprocess.run(cmd.split(' '))
+            return self.download_dir / Path(link).name
+        def _check_pct_valid(path):
+            """Helper function to compute percentage of valid pixels in image."""
+            with rasterio.open(path, 'r') as src:
+                data = src.read(1)
+                data = np.nan_to_num(data, 0)
+                num_valid = (data != 0).sum()
+                num_total = src.height * src.width
+            pct_valid = 100 * (num_valid / num_total) if num_total > 0 else 0
+            if pct_valid < self.ecostress_pct_valid_threshold:
+                self.logger.warning(f'Image {path} has only {pct_valid:.0f}% valid pixels and will be removed.')
+                subprocess.run(['rm', path])
+            else:
+                self.download_paths.append(output_path)
 
+        if getattr(self, 'secret', None) is None:
+            raise ValueError('No Earthdata credentials provided -- data download cannot proceed. Please use method update_from_dict({"secret": secret}) to add attribute to EcostressConfig (secret={"username": user, "password": pw}).')
+        self.username = self.secret['username']  # username for the Earthdata account
+        self.password = self.secret['password']  # password for the Earthdata account
         if hasattr(self, 'download_links') == False:
             self.logger.error('No attribute download_links found. Please run obtain_download_links() first.')
             raise AttributeError('No attribute download_links found. Please run obtain_download_links() first.')
-        
         if not self.download_links:
             return
-        
         self.logger.info(f'Downloading {len(self.download_links)} ECOSTRESS images to {self.download_dir}...')
-        self.logger.info(f"    -- Number of threads: {self.max_threads}")
-        with ThreadPoolExecutor(self.max_threads) as executor:
-            futures = {executor.submit(_download_single_image, link): link for link in self.download_links}
-            for future in as_completed(futures):
-                link = futures[future]
-                try:
-                    future.result()
-                except Exception as e:
-                    self.logger.error(f'Error downloading {link}: {e}')       
+        self.download_paths = []
+        for link in self.download_links:
+            try:
+                output_path = _download_single_image(link)
+                _check_pct_valid(output_path)
+            except Exception as e:
+                self.logger.error(f'Error downloading {link}: {e}')     
         self.logger.info('    -- Download completed.')
-        
 
 
     def reproject(self, tile_id, images_to_reproject, template_path):

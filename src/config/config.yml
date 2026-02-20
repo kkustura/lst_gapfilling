@@ -8,11 +8,12 @@ inca_nodata: 255     # value to which to set INCA no data
 
 # ======== S2 ==============================
 s2_datasets : ['B02', 'B03', 'B04', 'B08', 'B11', 'B12', 'SCL']  # Sentinel-2 layers
-pct_valid_threshold: 0    # valid pixels requested in Sentinel images (%)
+s2_pct_valid_threshold: 0    # valid pixels requested in Sentinel images (%)
 cloud_cover_max: 100  # max cloud coverage allowed in Sentinel images (%)
 s2_nodata: 0   # value to which to set S2 no data   
 
 # ======== ECOSTRESS ============================== 
+ecostress_pct_valid_threshold: 30  # valid pixels requested in ECOSTRESS images (%)
 ecostress_nodata: 999  # value to which to set ECOSTRESS no data
 
 
